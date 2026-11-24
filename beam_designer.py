@@ -1,6 +1,7 @@
 """Beam Designer: a small Tkinter beam analysis desktop application."""
 import json
 import math
+import csv
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
@@ -106,7 +107,7 @@ class BeamDesigner(tk.Tk):
         self.bind_all("<Control-o>",lambda event:self.open_file())
         top=ttk.Frame(self,padding=(16,10)); top.pack(fill="x")
         ttk.Label(top,text="▰  BEAM DESIGNER",font=("TkDefaultFont",16,"bold"),foreground=NAVY).pack(side="left")
-        for label,cmd in (("Report",self.report),):
+        for label,cmd in (("Export results",self.export_results),("Report",self.report)):
             ttk.Button(top,text=label,command=cmd).pack(side="right",padx=3)
         body=ttk.Frame(self); body.pack(fill="both",expand=True)
         self.sidebar=ttk.Frame(body,width=330,padding=14); self.sidebar.pack(side="left",fill="y"); self.sidebar.pack_propagate(False)
@@ -315,6 +316,18 @@ class BeamDesigner(tk.Tk):
               f"Maximum deflection: {r['y_max']:.4f} in at {r['yx']:.3f} ft (limit {r['allow']:.4f} in)\nBending stress: {r['stress']:.3f} ksi / {FB[s['material']]:g} ksi\nRecommendation: {self.suggestion()}\n")
         path=filedialog.asksaveasfilename(defaultextension=".txt",filetypes=[("Text report","*.txt")])
         if path:Path(path).write_text(text);self.status.set("Report exported")
+
+    def export_results(self):
+        path=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV for Excel","*.csv")],title="Export beam results")
+        if not path:return
+        try:
+            with open(path,"w",newline="",encoding="utf-8-sig") as output:
+                writer=csv.writer(output)
+                writer.writerow(["x (ft)","V (kips)","M (kip-ft)","Deflection (in)"])
+                writer.writerows((f"{x:.6f}",f"{v:.6f}",f"{m:.6f}",f"{y:.6f}")
+                                 for x,v,m,y in zip(self.result["xs"],self.result["vs"],self.result["ms"],self.result["ys"]))
+            self.status.set(f"Results exported to {Path(path).name}")
+        except OSError as e:messagebox.showerror("Export failed",str(e))
 
 
 if __name__ == "__main__":

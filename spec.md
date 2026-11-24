@@ -131,6 +131,9 @@ sizing a floor beam or deck joist.
   name, all entered inputs, reactions, maximum shear and moment, maximum
   deflection, bending stress, allowable stress, deflection limit, pass/fail
   statuses, and the current section recommendation.
+- Export results: provide a button that saves the beam response table to a
+  CSV file that opens in Excel. Include x (ft), V (kips), M (kip-ft), and
+  deflection (in) for each calculated position along the beam.
 - A beam drawing with the supports, load arrows (point loads as single
   arrows, uniform loads as a row of small arrows), and the reactions.
 - Three diagrams stacked under the beam and lined up with it on the same
