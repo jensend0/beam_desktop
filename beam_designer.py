@@ -96,9 +96,17 @@ class BeamDesigner(tk.Tk):
         self._make_ui(); self.refresh()
 
     def _make_ui(self):
+        menubar=tk.Menu(self)
+        file_menu=tk.Menu(menubar,tearoff=False)
+        file_menu.add_command(label="Save…",command=self.save_file,accelerator="Ctrl+S")
+        file_menu.add_command(label="Open…",command=self.open_file,accelerator="Ctrl+O")
+        menubar.add_cascade(label="File",menu=file_menu)
+        self.configure(menu=menubar)
+        self.bind_all("<Control-s>",lambda event:self.save_file())
+        self.bind_all("<Control-o>",lambda event:self.open_file())
         top=ttk.Frame(self,padding=(16,10)); top.pack(fill="x")
         ttk.Label(top,text="▰  BEAM DESIGNER",font=("TkDefaultFont",16,"bold"),foreground=NAVY).pack(side="left")
-        for label,cmd in (("Save",self.save_design),("Export",self.export_design),("Import",self.import_design),("Report",self.report)):
+        for label,cmd in (("Report",self.report),):
             ttk.Button(top,text=label,command=cmd).pack(side="right",padx=3)
         body=ttk.Frame(self); body.pack(fill="both",expand=True)
         self.sidebar=ttk.Frame(body,width=330,padding=14); self.sidebar.pack(side="left",fill="y"); self.sidebar.pack_propagate(False)
@@ -253,6 +261,34 @@ class BeamDesigner(tk.Tk):
         try:
             self.design_file.write_text(json.dumps(designs,indent=2));self.saved_box.configure(values=list(designs));self.saved_name.set(state["name"]);self.status.set(f"Saved {state['name']}")
         except OSError as e:messagebox.showerror("Save failed",str(e))
+    def save_file(self):
+        path=filedialog.asksaveasfilename(defaultextension=".json",filetypes=[("Beam design","*.json")],title="Save beam")
+        if not path:return
+        try:
+            Path(path).write_text(json.dumps(self.collect(),indent=2))
+            self.status.set(f"Saved beam to {Path(path).name}")
+        except OSError as e:messagebox.showerror("Save failed",str(e))
+    def open_file(self):
+        path=filedialog.askopenfilename(filetypes=[("Beam design","*.json")],title="Open beam")
+        if not path:return
+        try:
+            data=json.loads(Path(path).read_text())
+            material=data.get("material","Steel")
+            if material not in SECTIONS:raise ValueError("Unknown material")
+            support=data.get("support","Simply supported")
+            if support not in ("Simply supported","Cantilever"):raise ValueError("Unknown support type")
+            data["span"]=max(4,min(40,float(data.get("span",20))))
+            data["points"]=[dict(magnitude=max(0,min(100,float(p["magnitude"]))),position=max(0,min(data["span"],round(float(p["position"])*4)/4))) for p in data.get("points",[])]
+            data["uniforms"]=[dict(magnitude=max(0,min(10,float(u["magnitude"]))),start=max(0,min(data["span"],round(float(u["start"])*4)/4)),end=max(0,min(data["span"],round(float(u["end"])*4)/4))) for u in data.get("uniforms",[])]
+            data["section"]=data.get("section","W12x26" if material=="Steel" else "2x8")
+            if data["section"] not in SECTIONS[material]:raise ValueError("Section does not match the selected material")
+            self.state.update(data)
+            self.name.set(data.get("name","Untitled beam"));self.span.set(data["span"]);self.support.set(support)
+            self.material.set(material);self.section_box.configure(values=list(SECTIONS[material]));self.section.set(data["section"])
+            self.limit.set(data.get("limit","L/360"));self.waste.set(data.get("waste",15))
+            self.rebuild_loads();self.refresh();self.status.set(f"Opened beam from {Path(path).name}")
+        except (ValueError,KeyError,TypeError,OSError,json.JSONDecodeError) as e:
+            messagebox.showerror("Could not open beam",str(e))
     def load_saved(self,event=None):
         try:
             data=json.loads(self.design_file.read_text())[self.saved_name.get()]

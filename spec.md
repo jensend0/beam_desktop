@@ -118,11 +118,12 @@ sizing a floor beam or deck joist.
   in inches for deflection limits, and EI is in ksi-in^4 for deflection.
 
 ## Outputs
-- Save design: save or update a named design in a local JSON file. Saved
-  designs can be selected and loaded from the app.
-- Export/import design: save or open a JSON file containing the complete
-  beam configuration, including loads, support, section, deflection limit,
-  and waste factor.
+- File menu: provide **Save** and **Open** commands. Save writes the current
+  beam configuration to a user-selected JSON file; Open restores it from a
+  selected file. Include support type, span, material and section,
+  deflection limit, and point and uniform loads.
+- Export/import design: JSON file actions may also include design name and
+  waste factor.
 - Design status: briefly confirm successful save, copy, load, or restore
   actions and report an invalid shared URL.
 - Calculation report: a report action exports a printable report or opens
