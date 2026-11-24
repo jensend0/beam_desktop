@@ -84,6 +84,29 @@ def analyze(state, section=None):
                 stress=stress,bend_ratio=stress/FB[state["material"]],defl_ratio=y_max/allow)
 
 
+def _pdf_text(value):
+    value=str(value).encode("cp1252","replace").decode("cp1252")
+    return value.replace("\\","\\\\").replace("(","\\(").replace(")","\\)")
+
+
+def write_pdf(path, commands):
+    """Write a compact, one-page vector PDF using only the Python standard library."""
+    stream="\n".join(commands).encode("cp1252","replace")
+    objects=[b"<< /Type /Catalog /Pages 2 0 R >>",
+             b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
+             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+             b"<< /Length %d >>\nstream\n"%len(stream)+stream+b"\nendstream"]
+    pdf=bytearray(b"%PDF-1.4\n% Beam Designer\n"); offsets=[0]
+    for i,obj in enumerate(objects,1):
+        offsets.append(len(pdf));pdf.extend(f"{i} 0 obj\n".encode());pdf.extend(obj);pdf.extend(b"\nendobj\n")
+    xref=len(pdf);pdf.extend(f"xref\n0 {len(objects)+1}\n0000000000 65535 f \n".encode())
+    for off in offsets[1:]:pdf.extend(f"{off:010d} 00000 n \n".encode())
+    pdf.extend(f"trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+    Path(path).write_bytes(pdf)
+
+
 class BeamDesigner(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -107,7 +130,7 @@ class BeamDesigner(tk.Tk):
         self.bind_all("<Control-o>",lambda event:self.open_file())
         top=ttk.Frame(self,padding=(16,10)); top.pack(fill="x")
         ttk.Label(top,text="▰  BEAM DESIGNER",font=("TkDefaultFont",16,"bold"),foreground=NAVY).pack(side="left")
-        for label,cmd in (("Export results",self.export_results),("Report",self.report)):
+        for label,cmd in (("Calculation sheet",self.calculation_sheet),("Export results",self.export_results),("Report",self.report)):
             ttk.Button(top,text=label,command=cmd).pack(side="right",padx=3)
         body=ttk.Frame(self); body.pack(fill="both",expand=True)
         self.sidebar=ttk.Frame(body,width=330,padding=14); self.sidebar.pack(side="left",fill="y"); self.sidebar.pack_propagate(False)
@@ -328,6 +351,50 @@ class BeamDesigner(tk.Tk):
                                  for x,v,m,y in zip(self.result["xs"],self.result["vs"],self.result["ms"],self.result["ys"]))
             self.status.set(f"Results exported to {Path(path).name}")
         except OSError as e:messagebox.showerror("Export failed",str(e))
+
+    def calculation_sheet(self):
+        path=filedialog.asksaveasfilename(defaultextension=".pdf",filetypes=[("PDF document","*.pdf")],title="Save calculation sheet")
+        if not path:return
+        s=self.state;r=self.result;cmd=[]
+        def text(x,y,value,size=9,bold=False,color=(.09,.20,.30)):
+            cmd.extend([f"{color[0]} {color[1]} {color[2]} rg",f"BT /{'F2' if bold else 'F1'} {size} Tf {x:.2f} {y:.2f} Td ({_pdf_text(value)}) Tj ET"])
+        def line(x1,y1,x2,y2,color=(.85,.88,.92),width=1):
+            cmd.extend([f"{color[0]} {color[1]} {color[2]} RG",f"{width} w",f"{x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S"])
+        text(42,754,"BEAM DESIGNER | CALCULATION SHEET",16,True)
+        text(42,738,f"Design: {s['name']}    |    Support: {s['support']}    |    Span: {s['span']:g} ft",9)
+        text(42,723,f"Material / section: {s['material']} / {s['section']}    |    Deflection limit: {s['limit']}    |    Waste: {s['waste']}%",9)
+        loads=[]
+        loads.extend(f"Point {i+1}: {p['magnitude']:g} k at {p['position']:g} ft" for i,p in enumerate(s['points']))
+        loads.extend(f"Uniform {i+1}: {u['magnitude']:g} k/ft from {u['start']:g} to {u['end']:g} ft" for i,u in enumerate(s['uniforms']))
+        text(42,707,"Loads: " + ("; ".join(loads) if loads else "None"),8)
+        line(42,697,570,697,(.76,.81,.87))
+        bpass=r['bend_ratio']<=1;dpass=r['defl_ratio']<=1
+        text(42,679,f"Reactions: {r['left']:.2f} / {r['right']:.2f} k",9,True)
+        text(220,679,f"Max shear: {r['max_v']:.2f} k",9,True)
+        text(360,679,f"Max moment: {r['max_m']:.2f} kip-ft at {r['mx']:.2f} ft",9,True)
+        text(42,662,f"Bending: {r['stress']:.2f} / {FB[s['material']]:g} ksi - {'PASS' if bpass else 'FAIL'}",9,True,(.08,.52,.25) if bpass else (.72,.12,.12))
+        text(310,662,f"Deflection: {r['y_max']:.3f} / {r['allow']:.3f} in - {'PASS' if dpass else 'FAIL'}",9,True,(.08,.52,.25) if dpass else (.72,.12,.12))
+        text(42,646,f"Recommendation: {self.suggestion()}",9,True)
+        chart_top=625; chart_h=177
+        for k,(title,values,unit,color) in enumerate((("SHEAR V","vs","kips",(.15,.39,.92)),("MOMENT M","ms","kip-ft",(.09,.64,.31)),("DEFLECTION y","ys","in",(.83,.43,.07)))):
+            ytop=chart_top-k*chart_h; bottom=ytop-150; left=58; right=558; center=(bottom+ytop-22)/2
+            text(42,ytop-8,f"{title} ({unit})",9,True)
+            line(left,center,right,center,(.84,.87,.91),.7)
+            vals=r[values];peak=max(max(map(abs,vals)),.001);amp=53
+            curve=[]
+            for x,val in zip(r['xs'],vals):curve.append((left+x/s['span']*(right-left),center-val/peak*amp))
+            if curve:
+                col=" ".join(map(str,color));cmd.append(f"{col} RG 1.5 w")
+                cmd.append(f"{curve[0][0]:.2f} {curve[0][1]:.2f} m")
+                cmd.extend(f"{x:.2f} {y:.2f} l" for x,y in curve[1:]);cmd.append("S")
+                imax=max(range(len(vals)),key=lambda i:abs(vals[i]));px,py=curve[imax]
+                line(px,center,px,py,color,.6)
+                text(min(max(left,px-38),right-85),py+5,f"{abs(vals[imax]):.3f} at {r['xs'][imax]:.2f} ft",7,True,color)
+            line(left,bottom,right,bottom,(.76,.81,.87),.5)
+        text(42,64,"Prepared from the selected load, support, material, section and limit inputs. Units are noted on each result.",7,False,(.39,.45,.52))
+        try:
+            write_pdf(path,cmd);self.status.set(f"Calculation sheet saved to {Path(path).name}")
+        except OSError as e:messagebox.showerror("PDF export failed",str(e))
 
 
 if __name__ == "__main__":

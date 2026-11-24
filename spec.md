@@ -134,6 +134,9 @@ sizing a floor beam or deck joist.
 - Export results: provide a button that saves the beam response table to a
   CSV file that opens in Excel. Include x (ft), V (kips), M (kip-ft), and
   deflection (in) for each calculated position along the beam.
+- Calculation sheet: provide a button that saves the diagrams and design
+  checks as a PDF, with the selected inputs listed at the top, ready to hand
+  in with a design.
 - A beam drawing with the supports, load arrows (point loads as single
   arrows, uniform loads as a row of small arrows), and the reactions.
 - Three diagrams stacked under the beam and lined up with it on the same
